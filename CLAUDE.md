@@ -7,7 +7,7 @@ Internal storage abstraction for the OVP (Open Voice Pipeline) system. This is t
 - Axum HTTP server binding to `127.0.0.1:8001` (localhost only)
 - Owns Postgres via sqlx — runs migrations, handles all CRUD
 - Owns S3 (Hetzner Object Storage) — audio chunk storage, metadata files
-- File-based admission auth + service sessions with heartbeat
+- Shared-secret auth + service sessions with heartbeat
 
 ## Architecture
 
@@ -15,11 +15,10 @@ No business logic. Pure CRUD + storage abstraction. Every endpoint validates the
 
 ## Auth model
 
-1. On startup, generates a random admission token and writes it to a file
-2. Token rotates every 60 seconds (previous token stays valid for race conditions)
-3. Services read the file, POST /internal/auth to get a session token
-4. Session token is used as Bearer token for all subsequent requests
-5. Services send heartbeats every 30 seconds; sessions inactive >90s are reaped
+1. All services share a secret (`SHARED_SECRET` env var)
+2. Services POST /internal/auth with the shared secret to get a session token
+3. Session token is used as Bearer token for all subsequent requests
+4. Services send heartbeats every 30 seconds; sessions inactive >90s are reaped
 
 ## Project structure
 
@@ -48,5 +47,5 @@ migrations/          — SQL migrations (001-003)
 - `S3_ENDPOINT` — Object storage endpoint
 - `S3_ACCESS_KEY` / `S3_SECRET_KEY` — S3 credentials
 - `S3_BUCKET` — Bucket name (default: ttrpg-dataset-raw)
-- `ADMISSION_TOKEN_PATH` — Where to write the admission token (default: /var/run/ovp/admission-token)
+- `SHARED_SECRET` — Shared secret for service authentication (required)
 - `BIND_ADDR` — Listen address (default: 127.0.0.1:8001)

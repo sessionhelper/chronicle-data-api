@@ -8,7 +8,6 @@ mod storage;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::auth::{generate_token, write_token_file, AdmissionState};
 use crate::config::Config;
 use crate::routes::AppState;
 
@@ -32,19 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize S3 client
     let s3_client = storage::create_s3_client(&config).await;
 
-    // Generate initial admission token and write to file
-    let initial_token = generate_token();
-    write_token_file(&config.admission_token_path, &initial_token).await?;
-    info!(path = %config.admission_token_path, "admission token written");
-
-    let admission = AdmissionState::new(initial_token);
-
-    // Spawn background tasks
-    auth::spawn_rotation_task(
-        admission.clone(),
-        config.admission_token_path.clone(),
-        config.admission_rotation_secs,
-    );
+    // Spawn session reaper
     auth::spawn_session_reaper(pool.clone());
 
     // Build application state and router
@@ -52,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pool,
         s3_client,
         s3_bucket: config.s3_bucket,
-        admission,
+        shared_secret: config.shared_secret,
     };
 
     let app = routes::build_router(state);

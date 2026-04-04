@@ -7,9 +7,8 @@ pub struct Config {
     pub s3_access_key: String,
     pub s3_secret_key: String,
     pub s3_bucket: String,
-    pub admission_token_path: String,
+    pub shared_secret: String,
     pub bind_addr: String,
-    pub admission_rotation_secs: u64,
 }
 
 impl Config {
@@ -25,14 +24,10 @@ impl Config {
                 .expect("S3_SECRET_KEY must be set"),
             s3_bucket: env::var("S3_BUCKET")
                 .unwrap_or_else(|_| "ttrpg-dataset-raw".to_string()),
-            admission_token_path: env::var("ADMISSION_TOKEN_PATH")
-                .unwrap_or_else(|_| "/var/run/ovp/admission-token".to_string()),
+            shared_secret: env::var("SHARED_SECRET")
+                .expect("SHARED_SECRET must be set"),
             bind_addr: env::var("BIND_ADDR")
                 .unwrap_or_else(|_| "127.0.0.1:8001".to_string()),
-            admission_rotation_secs: env::var("ADMISSION_ROTATION_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60),
         }
     }
 }

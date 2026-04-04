@@ -9,7 +9,6 @@ pub mod users;
 use axum::{middleware, Router};
 use sqlx::PgPool;
 
-use crate::auth::AdmissionState;
 use crate::auth::middleware::require_service_auth;
 
 /// Shared application state passed to all route handlers.
@@ -18,7 +17,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub s3_client: aws_sdk_s3::Client,
     pub s3_bucket: String,
-    pub admission: AdmissionState,
+    pub shared_secret: String,
 }
 
 pub fn build_router(state: AppState) -> Router {
