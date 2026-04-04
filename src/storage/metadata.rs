@@ -11,7 +11,7 @@ pub async fn write_metadata(
     filename: &str,
     data: &serde_json::Value,
 ) -> Result<(), AppError> {
-    let key = format!("sessions/{}/{}", s3_prefix, filename);
+    let key = format!("{}/{}", s3_prefix, filename);
     let body = serde_json::to_vec_pretty(data)
         .map_err(|e| AppError::Internal(format!("json serialize: {e}")))?;
 
@@ -35,7 +35,7 @@ pub async fn read_metadata(
     s3_prefix: &str,
     filename: &str,
 ) -> Result<serde_json::Value, AppError> {
-    let key = format!("sessions/{}/{}", s3_prefix, filename);
+    let key = format!("{}/{}", s3_prefix, filename);
 
     let result = client
         .get_object()
