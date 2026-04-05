@@ -1,51 +1,54 @@
-# OVP Data API
+# ovp-data-api
 
-Internal storage abstraction for the OVP (Open Voice Pipeline) system. This is the only service that touches Postgres and S3. All other services (bot, pipeline, portal) are API clients.
+> Org-wide conventions (Rust style, git workflow, shared-secret auth, cross-service architecture) live in `/home/alex/sessionhelper-hub/CLAUDE.md`. Read that first for anything cross-cutting.
+
+Internal storage abstraction for the OVP system. The only service that touches Postgres and S3 — all others are HTTP clients.
 
 ## What this does
 
-- Axum HTTP server binding to `127.0.0.1:8001` (localhost only)
-- Owns Postgres via sqlx — runs migrations, handles all CRUD
-- Owns S3 (Hetzner Object Storage) — audio chunk storage, metadata files
-- Shared-secret auth + service sessions with heartbeat
+- Axum HTTP server, binds `127.0.0.1:8001` (localhost only)
+- Owns Postgres via `sqlx` (runtime-checked queries, migrations in `migrations/`)
+- Owns S3 (Hetzner Object Storage) — audio chunks, metadata files
+- Issues service session tokens, validates Bearer tokens on every protected route
 
-## Architecture
+No business logic. Every endpoint validates the session token via middleware, calls a db/storage function, returns JSON.
 
-No business logic. Pure CRUD + storage abstraction. Every endpoint validates the service session token via middleware, calls the appropriate db/storage function, and returns JSON.
-
-## Auth model
-
-1. All services share a secret (`SHARED_SECRET` env var)
-2. Services POST /internal/auth with the shared secret to get a session token
-3. Session token is used as Bearer token for all subsequent requests
-4. Services send heartbeats every 30 seconds; sessions inactive >90s are reaped
-
-## Project structure
+## Project layout
 
 ```
-src/main.rs          — Startup, router, background tasks
-src/config.rs        — Config from env vars
-src/error.rs         — AppError type with IntoResponse
-src/auth/            — Admission token rotation, session management, middleware
-src/db/              — Postgres CRUD (sessions, users, participants, segments, flags, audit)
-src/storage/         — S3 operations (audio chunks, metadata files)
-src/routes/          — Axum route handlers
-migrations/          — SQL migrations (001-003)
+src/
+  main.rs          — startup, router, session reaper task
+  config.rs        — env config
+  error.rs         — AppError with IntoResponse
+  auth/            — session token issue/validate, middleware
+  db/              — Postgres CRUD (sessions, users, participants, segments, flags, audit)
+  storage/         — S3 operations
+  routes/          — Axum handlers
+migrations/        — 001_initial, 002_transcripts, 003_service_sessions
 ```
 
-## Conventions
+## Repo-specific conventions
 
-- Use `sqlx::query` / `sqlx::query_as` (runtime checked, not compile-time)
-- All routes return JSON; errors return `{ "error": "..." }` with appropriate status
-- Structured logging via `tracing`
-- Result + ? everywhere, no unwrap in non-test code
-- Session token stored as hash in DB for lookup
+- Use `sqlx::query` / `sqlx::query_as` (runtime-checked, not compile-time macros — migrations aren't always applied when tools run).
+- All routes return JSON. Errors return `{ "error": "..." }` with the right status.
+- Session tokens stored as SHA-256 hash in `service_sessions` for lookup.
+- Structured logging via `tracing`.
 
-## Required env vars
+## Env vars
 
-- `DATABASE_URL` — Postgres connection string
-- `S3_ENDPOINT` — Object storage endpoint
-- `S3_ACCESS_KEY` / `S3_SECRET_KEY` — S3 credentials
-- `S3_BUCKET` — Bucket name (default: ttrpg-dataset-raw)
-- `SHARED_SECRET` — Shared secret for service authentication (required)
-- `BIND_ADDR` — Listen address (default: 127.0.0.1:8001)
+| Var | Required | Default |
+|---|---|---|
+| `DATABASE_URL` | yes | — |
+| `S3_ENDPOINT` | yes | — |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | yes | — |
+| `S3_BUCKET` | no | `ttrpg-dataset-raw` |
+| `SHARED_SECRET` | yes | — |
+| `BIND_ADDR` | no | `127.0.0.1:8001` |
+
+## Build / run
+
+```bash
+cargo build --release
+cargo check
+cargo test
+```
