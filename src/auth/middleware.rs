@@ -11,13 +11,11 @@ use sqlx::PgPool;
 /// Service session info extracted by the auth middleware, available to handlers.
 #[derive(Clone, Debug)]
 pub struct ServiceSession {
-    pub id: uuid::Uuid,
     pub service_name: String,
 }
 
 #[derive(sqlx::FromRow)]
 struct SessionRow {
-    id: uuid::Uuid,
     service_name: String,
 }
 
@@ -44,7 +42,7 @@ pub async fn require_service_auth(
     let token_hash = bcrypt_hash_for_lookup(token);
 
     let row = sqlx::query_as::<_, SessionRow>(
-        "SELECT id, service_name FROM service_sessions WHERE token_hash = $1 AND alive = true"
+        "SELECT service_name FROM service_sessions WHERE token_hash = $1 AND alive = true"
     )
     .bind(&token_hash)
     .fetch_optional(&*pool)
@@ -58,7 +56,6 @@ pub async fn require_service_auth(
         Some(session) => {
             tracing::debug!(service = %session.service_name, "authenticated service request");
             request.extensions_mut().insert(ServiceSession {
-                id: session.id,
                 service_name: session.service_name,
             });
             Ok(next.run(request).await)
@@ -69,23 +66,14 @@ pub async fn require_service_auth(
     }
 }
 
-/// We store a SHA-256 hex digest of the token (not bcrypt, since we need lookups by hash).
-/// bcrypt is used only for the admission token validation.
-/// For session tokens we use a simple hash so we can do WHERE token_hash = $1.
+/// Deterministic hash for session token storage and lookup.
+/// SHA-256 hex digest — same output every time for the same input.
 pub fn hash_session_token(token: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    // Use a simple deterministic hash for DB lookup.
-    // In production you'd want SHA-256, but we avoid adding another dep.
-    // We'll do a manual SHA-256-like approach with the available tools.
-    // Actually, let's just store the token directly hashed with a simple scheme.
-    // For this MVP, we use a basic hash. The token itself is 64 hex chars of randomness.
-    let mut hasher = DefaultHasher::new();
-    token.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    use sha2::{Sha256, Digest};
+    let hash = Sha256::digest(token.as_bytes());
+    hex::encode(hash)
 }
 
 fn bcrypt_hash_for_lookup(token: &str) -> String {
-    // We use the same hash function for lookup as we used for storage
     hash_session_token(token)
 }

@@ -52,6 +52,51 @@ pub async fn add(pool: &PgPool, session_id: Uuid, input: &AddParticipant) -> Res
     Ok(row)
 }
 
+/// Insert N participants into a single session in one round trip. Returns
+/// the inserted rows in the same order as the input. Used by the bot's
+/// /record flow to replace an N-call add_participant loop with a single
+/// batch INSERT, cutting the setup latency proportionally to the party
+/// size.
+pub async fn add_many(
+    pool: &PgPool,
+    session_id: Uuid,
+    inputs: &[AddParticipant],
+) -> Result<Vec<Participant>, AppError> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Build the VALUES clause with explicit $N placeholders. Postgres has
+    // a hard cap around 65535 bind parameters; with 3 params per row that
+    // caps us at ~21k participants per call, which is plenty given a
+    // real-world upper bound of maybe a few dozen per session.
+    let mut query = String::from(
+        "INSERT INTO session_participants (session_id, user_id, mid_session_join) VALUES ",
+    );
+    let mut first = true;
+    for i in 0..inputs.len() {
+        if !first {
+            query.push_str(", ");
+        }
+        first = false;
+        let base = i * 3;
+        query.push_str(&format!(
+            "(${}, ${}, COALESCE(${}, false))",
+            base + 1,
+            base + 2,
+            base + 3
+        ));
+    }
+    query.push_str(" RETURNING *");
+
+    let mut q = sqlx::query_as::<_, Participant>(&query);
+    for input in inputs {
+        q = q.bind(session_id).bind(input.user_id).bind(input.mid_session_join);
+    }
+
+    Ok(q.fetch_all(pool).await?)
+}
+
 pub async fn list(pool: &PgPool, session_id: Uuid) -> Result<Vec<Participant>, AppError> {
     let rows = sqlx::query_as::<_, Participant>(
         "SELECT * FROM session_participants WHERE session_id = $1"
@@ -63,8 +108,23 @@ pub async fn list(pool: &PgPool, session_id: Uuid) -> Result<Vec<Participant>, A
     Ok(rows)
 }
 
+/// Update a participant's consent state and append a matching row to
+/// `consent_audit_log` in the same transaction. This is the canonical
+/// place every consent decision is audited — callers never need to write
+/// to the audit log explicitly.
 pub async fn update_consent(pool: &PgPool, id: Uuid, input: &UpdateConsent) -> Result<Participant, AppError> {
-    let row = sqlx::query_as::<_, Participant>(
+    let mut tx = pool.begin().await?;
+
+    // Read the existing row so the audit entry can capture previous_scope.
+    let existing = sqlx::query_as::<_, Participant>(
+        "SELECT * FROM session_participants WHERE id = $1"
+    )
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("participant {id} not found")))?;
+
+    let updated = sqlx::query_as::<_, Participant>(
         "UPDATE session_participants SET
             consent_scope = COALESCE($2, consent_scope),
             consented_at = COALESCE($3, consented_at),
@@ -76,11 +136,42 @@ pub async fn update_consent(pool: &PgPool, id: Uuid, input: &UpdateConsent) -> R
     .bind(&input.consent_scope)
     .bind(input.consented_at)
     .bind(input.withdrawn_at)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("participant {id} not found")))?;
+    .fetch_one(&mut *tx)
+    .await?;
 
-    Ok(row)
+    // Derive the audit action. Withdrawal wins over scope changes because
+    // a withdrawal patch typically also nulls/updates consent_scope.
+    //   - grant:  first-time null → <scope>
+    //   - update: <scope_a> → <scope_b> (e.g., full → decline)
+    //   - withdraw: withdrawn_at flipped from null
+    let action = if input.withdrawn_at.is_some() && existing.withdrawn_at.is_none() {
+        Some("withdraw")
+    } else if existing.consent_scope != updated.consent_scope {
+        if existing.consent_scope.is_none() {
+            Some("grant")
+        } else {
+            Some("update")
+        }
+    } else {
+        None
+    };
+
+    if let Some(action) = action {
+        sqlx::query(
+            "INSERT INTO consent_audit_log (user_id, session_id, action, previous_scope, new_scope)
+             VALUES ($1, $2, $3, $4, $5)"
+        )
+        .bind(updated.user_id)
+        .bind(updated.session_id)
+        .bind(action)
+        .bind(&existing.consent_scope)
+        .bind(&updated.consent_scope)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok(updated)
 }
 
 pub async fn update_license(pool: &PgPool, id: Uuid, input: &UpdateLicense) -> Result<Participant, AppError> {

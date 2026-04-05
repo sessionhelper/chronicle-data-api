@@ -11,7 +11,7 @@ use crate::routes::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct AuthRequest {
-    pub admission_token: String,
+    pub shared_secret: String,
     pub service_name: String,
 }
 
@@ -29,8 +29,8 @@ async fn authenticate(
     State(state): State<AppState>,
     Json(req): Json<AuthRequest>,
 ) -> Result<Json<AuthResponse>, AppError> {
-    if !state.admission.validate(&req.admission_token).await {
-        return Err(AppError::Unauthorized("invalid admission token".to_string()));
+    if req.shared_secret != state.shared_secret {
+        return Err(AppError::Unauthorized("invalid shared secret".to_string()));
     }
 
     let session_token = auth::generate_token();

@@ -20,10 +20,9 @@ pub async fn upload_chunk(
     seq: u32,
     body: Vec<u8>,
 ) -> Result<String, AppError> {
-    let key = format!(
-        "sessions/{}/audio/{}/chunk_{:04}.pcm",
-        s3_prefix, pseudo_id, seq
-    );
+    let key = format!("{}/audio/{}/chunk_{:04}.pcm", s3_prefix, pseudo_id, seq);
+
+    tracing::info!(bucket, key, size = body.len(), "uploading audio chunk to S3");
 
     client
         .put_object()
@@ -35,6 +34,7 @@ pub async fn upload_chunk(
         .await
         .map_err(|e| AppError::S3(format!("upload failed: {e}")))?;
 
+    tracing::debug!(key, "chunk uploaded");
     Ok(key)
 }
 
@@ -45,7 +45,9 @@ pub async fn list_chunks(
     s3_prefix: &str,
     pseudo_id: &str,
 ) -> Result<Vec<ChunkInfo>, AppError> {
-    let prefix = format!("sessions/{}/audio/{}/", s3_prefix, pseudo_id);
+    let prefix = format!("{}/audio/{}/", s3_prefix, pseudo_id);
+
+    tracing::debug!(bucket, prefix, "listing audio chunks");
 
     let result = client
         .list_objects_v2()
@@ -72,6 +74,7 @@ pub async fn list_chunks(
         .collect();
 
     chunks.sort_by_key(|c| c.seq);
+    tracing::debug!(prefix, count = chunks.len(), "listed chunks");
     Ok(chunks)
 }
 
@@ -83,10 +86,9 @@ pub async fn download_chunk(
     pseudo_id: &str,
     seq: u32,
 ) -> Result<Vec<u8>, AppError> {
-    let key = format!(
-        "sessions/{}/audio/{}/chunk_{:04}.pcm",
-        s3_prefix, pseudo_id, seq
-    );
+    let key = format!("{}/audio/{}/chunk_{:04}.pcm", s3_prefix, pseudo_id, seq);
+
+    tracing::debug!(key, "downloading chunk");
 
     let result = client
         .get_object()
@@ -104,6 +106,7 @@ pub async fn download_chunk(
         .into_bytes()
         .to_vec();
 
+    tracing::debug!(key, size = bytes.len(), "chunk downloaded");
     Ok(bytes)
 }
 
@@ -113,7 +116,9 @@ pub async fn delete_session_audio(
     bucket: &str,
     s3_prefix: &str,
 ) -> Result<u32, AppError> {
-    let prefix = format!("sessions/{}/audio/", s3_prefix);
+    let prefix = format!("{}/audio/", s3_prefix);
+
+    tracing::info!(prefix, "deleting session audio");
 
     let result = client
         .list_objects_v2()
@@ -137,5 +142,6 @@ pub async fn delete_session_audio(
         }
     }
 
+    tracing::info!(deleted, "audio deleted");
     Ok(deleted)
 }
