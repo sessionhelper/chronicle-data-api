@@ -93,6 +93,20 @@ pub async fn update(pool: &PgPool, id: Uuid, input: &UpdateSession) -> Result<Se
     Ok(row)
 }
 
+/// List all sessions in a given status, ordered oldest-first. The worker
+/// polls this with `status=uploaded` to find sessions ready to transcribe;
+/// oldest-first means FIFO processing without needing a separate queue.
+pub async fn list_by_status(pool: &PgPool, status: &str) -> Result<Vec<Session>, AppError> {
+    let rows = sqlx::query_as::<_, Session>(
+        "SELECT * FROM sessions WHERE status = $1 ORDER BY started_at ASC"
+    )
+    .bind(status)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
+}
+
 pub async fn list_by_user(pool: &PgPool, user_pseudo_id: &str) -> Result<Vec<Session>, AppError> {
     let rows = sqlx::query_as::<_, Session>(
         "SELECT s.* FROM sessions s

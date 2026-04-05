@@ -14,6 +14,9 @@ use crate::routes::AppState;
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     pub user_pseudo_id: Option<String>,
+    /// Filter by session status (e.g. "uploaded"). Used by the worker to
+    /// poll for sessions ready to transcribe.
+    pub status: Option<String>,
 }
 
 async fn create_session(
@@ -60,11 +63,25 @@ async fn list_sessions(
     State(state): State<AppState>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<db::Session>>, AppError> {
-    let pseudo_id = query.user_pseudo_id
-        .ok_or_else(|| AppError::BadRequest("user_pseudo_id query param required".to_string()))?;
-
-    let sessions = db::list_by_user(&state.pool, &pseudo_id).await?;
-    Ok(Json(sessions))
+    // Exactly one of user_pseudo_id or status must be provided. The two
+    // listing modes have different access patterns and we don't want to
+    // accidentally return a user's sessions mixed with status-filtered ones.
+    match (query.user_pseudo_id, query.status) {
+        (Some(pseudo_id), None) => {
+            let sessions = db::list_by_user(&state.pool, &pseudo_id).await?;
+            Ok(Json(sessions))
+        }
+        (None, Some(status)) => {
+            let sessions = db::list_by_status(&state.pool, &status).await?;
+            Ok(Json(sessions))
+        }
+        (None, None) => Err(AppError::BadRequest(
+            "one of user_pseudo_id or status query param required".to_string(),
+        )),
+        (Some(_), Some(_)) => Err(AppError::BadRequest(
+            "user_pseudo_id and status are mutually exclusive".to_string(),
+        )),
+    }
 }
 
 pub fn routes() -> Router<AppState> {
