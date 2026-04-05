@@ -39,7 +39,7 @@ async fn add_participants_batch(
 async fn list_participants(
     State(state): State<AppState>,
     Path(session_id): Path<Uuid>,
-) -> Result<Json<Vec<db::Participant>>, AppError> {
+) -> Result<Json<Vec<db::ParticipantWithUser>>, AppError> {
     let participants = db::list(&state.pool, session_id).await?;
     Ok(Json(participants))
 }

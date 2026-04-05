@@ -97,9 +97,38 @@ pub async fn add_many(
     Ok(q.fetch_all(pool).await?)
 }
 
-pub async fn list(pool: &PgPool, session_id: Uuid) -> Result<Vec<Participant>, AppError> {
-    let rows = sqlx::query_as::<_, Participant>(
-        "SELECT * FROM session_participants WHERE session_id = $1"
+/// A participant row enriched with the joined user's `pseudo_id`. This is
+/// the shape returned by the list endpoint because every downstream caller
+/// (the worker, most notably) needs the pseudo_id to address per-speaker
+/// audio chunks in S3 — and the Data API is the only place that can cheaply
+/// perform the join. Older callers that deserialize into a struct without
+/// `user_pseudo_id` keep working since serde ignores unknown fields.
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ParticipantWithUser {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub user_pseudo_id: Option<String>,
+    pub consent_scope: Option<String>,
+    pub consented_at: Option<DateTime<Utc>>,
+    pub withdrawn_at: Option<DateTime<Utc>>,
+    pub mid_session_join: bool,
+    pub no_llm_training: bool,
+    pub no_public_release: bool,
+}
+
+pub async fn list(pool: &PgPool, session_id: Uuid) -> Result<Vec<ParticipantWithUser>, AppError> {
+    // LEFT JOIN so participants without a linked user row still appear —
+    // the worker filters those out by the None pseudo_id, but we don't
+    // want to silently drop rows from the listing.
+    let rows = sqlx::query_as::<_, ParticipantWithUser>(
+        "SELECT sp.id, sp.session_id, sp.user_id,
+                u.pseudo_id AS user_pseudo_id,
+                sp.consent_scope, sp.consented_at, sp.withdrawn_at,
+                sp.mid_session_join, sp.no_llm_training, sp.no_public_release
+         FROM session_participants sp
+         LEFT JOIN users u ON u.id = sp.user_id
+         WHERE sp.session_id = $1"
     )
     .bind(session_id)
     .fetch_all(pool)
