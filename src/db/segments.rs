@@ -16,6 +16,10 @@ pub struct Segment {
     pub text: String,
     pub original_text: String,
     pub confidence: Option<f64>,
+    pub beat_id: Option<i32>,
+    pub chunk_group: Option<i32>,
+    pub excluded: bool,
+    pub exclude_reason: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -28,6 +32,14 @@ pub struct CreateSegment {
     pub text: String,
     pub original_text: String,
     pub confidence: Option<f64>,
+    #[serde(default)]
+    pub beat_id: Option<i32>,
+    #[serde(default)]
+    pub chunk_group: Option<i32>,
+    #[serde(default)]
+    pub excluded: bool,
+    #[serde(default)]
+    pub exclude_reason: Option<String>,
 }
 
 pub async fn bulk_create(
@@ -39,8 +51,8 @@ pub async fn bulk_create(
 
     for seg in segments {
         let row = sqlx::query_as::<_, Segment>(
-            "INSERT INTO transcript_segments (session_id, segment_index, speaker_pseudo_id, start_time, end_time, text, original_text, confidence)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            "INSERT INTO transcript_segments (session_id, segment_index, speaker_pseudo_id, start_time, end_time, text, original_text, confidence, beat_id, chunk_group, excluded, exclude_reason)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING *"
         )
         .bind(session_id)
@@ -51,6 +63,10 @@ pub async fn bulk_create(
         .bind(&seg.text)
         .bind(&seg.original_text)
         .bind(seg.confidence)
+        .bind(seg.beat_id)
+        .bind(seg.chunk_group)
+        .bind(seg.excluded)
+        .bind(&seg.exclude_reason)
         .fetch_one(pool)
         .await?;
 

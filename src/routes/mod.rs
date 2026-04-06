@@ -1,7 +1,9 @@
 pub mod audio;
 pub mod audit;
 pub mod auth;
+pub mod beats;
 pub mod participants;
+pub mod scenes;
 pub mod segments;
 pub mod sessions;
 pub mod users;
@@ -32,6 +34,8 @@ pub fn build_router(state: AppState) -> Router {
         .merge(users::routes())
         .merge(participants::routes())
         .merge(segments::routes())
+        .merge(beats::routes())
+        .merge(scenes::routes())
         .merge(audio::routes())
         .merge(audit::routes())
         .route_layer(middleware::from_fn_with_state(state.pool.clone(), require_service_auth))
