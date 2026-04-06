@@ -1,6 +1,8 @@
 pub mod audit;
+pub mod beats;
 pub mod flags;
 pub mod participants;
+pub mod scenes;
 pub mod segments;
 pub mod sessions;
 pub mod users;
