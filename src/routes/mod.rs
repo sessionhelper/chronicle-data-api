@@ -44,8 +44,8 @@ pub fn build_router(state: AppState) -> Router {
         .route_layer(middleware::from_fn_with_state(state.pool.clone(), require_service_auth))
         .with_state(state.clone());
 
-    // WebSocket endpoint sits outside auth middleware — it has its own
-    // connection lifecycle. TODO: add token-based auth for WS connections.
+    // WebSocket endpoint sits outside the HTTP auth middleware — it validates
+    // the token from the `?token=` query parameter during the upgrade handshake.
     let ws_routes = Router::new()
         .merge(ws::routes())
         .with_state(state.clone());
