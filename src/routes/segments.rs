@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::db::flags;
 use crate::db::segments as db;
 use crate::error::AppError;
+use crate::events::ApiEvent;
 use crate::routes::AppState;
 
 async fn bulk_create_segments(
@@ -16,6 +17,20 @@ async fn bulk_create_segments(
     Json(input): Json<Vec<db::CreateSegment>>,
 ) -> Result<Json<Vec<db::Segment>>, AppError> {
     let segments = db::bulk_create(&state.pool, session_id, &input).await?;
+
+    // Broadcast individual segment events for progressive rendering
+    for seg in &segments {
+        let _ = state.events.send(ApiEvent::SegmentAdded {
+            session_id,
+            segment: serde_json::to_value(seg).unwrap_or_default(),
+        });
+    }
+    // Also broadcast a batch summary
+    let _ = state.events.send(ApiEvent::SegmentsBatchAdded {
+        session_id,
+        count: segments.len(),
+    });
+
     Ok(Json(segments))
 }
 

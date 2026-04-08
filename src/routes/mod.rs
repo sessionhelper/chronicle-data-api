@@ -7,11 +7,13 @@ pub mod scenes;
 pub mod segments;
 pub mod sessions;
 pub mod users;
+pub mod ws;
 
 use axum::{middleware, Router};
 use sqlx::PgPool;
 
 use crate::auth::middleware::require_service_auth;
+use crate::events::EventSender;
 
 /// Shared application state passed to all route handlers.
 #[derive(Clone)]
@@ -20,6 +22,7 @@ pub struct AppState {
     pub s3_client: aws_sdk_s3::Client,
     pub s3_bucket: String,
     pub shared_secret: String,
+    pub events: EventSender,
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -39,9 +42,16 @@ pub fn build_router(state: AppState) -> Router {
         .merge(audio::routes())
         .merge(audit::routes())
         .route_layer(middleware::from_fn_with_state(state.pool.clone(), require_service_auth))
-        .with_state(state);
+        .with_state(state.clone());
+
+    // WebSocket endpoint sits outside the HTTP auth middleware — it validates
+    // the token from the `?token=` query parameter during the upgrade handshake.
+    let ws_routes = Router::new()
+        .merge(ws::routes())
+        .with_state(state.clone());
 
     Router::new()
         .merge(auth_routes)
         .merge(protected_routes)
+        .merge(ws_routes)
 }

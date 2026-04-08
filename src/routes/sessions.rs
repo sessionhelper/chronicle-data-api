@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::auth::middleware::ServiceSession;
 use crate::db::sessions as db;
 use crate::error::AppError;
+use crate::events::ApiEvent;
 use crate::routes::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +57,15 @@ async fn update_session(
     Json(input): Json<db::UpdateSession>,
 ) -> Result<Json<db::Session>, AppError> {
     let session = db::update(&state.pool, id, &input).await?;
+
+    // Broadcast status change if the update included a status field
+    if let Some(ref status) = input.status {
+        let _ = state.events.send(ApiEvent::SessionStatusChanged {
+            session_id: id,
+            status: status.clone(),
+        });
+    }
+
     Ok(Json(session))
 }
 

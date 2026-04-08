@@ -2,6 +2,7 @@ mod auth;
 mod config;
 mod db;
 mod error;
+mod events;
 mod routes;
 mod storage;
 
@@ -9,6 +10,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Config;
+use crate::events::create_event_bus;
 use crate::routes::AppState;
 
 #[tokio::main]
@@ -34,12 +36,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Spawn session reaper
     auth::spawn_session_reaper(pool.clone());
 
+    // Event bus for real-time WebSocket notifications
+    let events = create_event_bus();
+
     // Build application state and router
     let state = AppState {
         pool,
         s3_client,
         s3_bucket: config.s3_bucket,
         shared_secret: config.shared_secret,
+        events,
     };
 
     let app = routes::build_router(state);

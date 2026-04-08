@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::db::beats as db;
 use crate::error::AppError;
+use crate::events::ApiEvent;
 use crate::routes::AppState;
 
 async fn bulk_create_beats(
@@ -15,6 +16,14 @@ async fn bulk_create_beats(
     Json(input): Json<Vec<db::CreateBeat>>,
 ) -> Result<Json<Vec<db::Beat>>, AppError> {
     let beats = db::bulk_create(&state.pool, session_id, &input).await?;
+
+    for beat in &beats {
+        let _ = state.events.send(ApiEvent::BeatDetected {
+            session_id,
+            beat: serde_json::to_value(beat).unwrap_or_default(),
+        });
+    }
+
     Ok(Json(beats))
 }
 

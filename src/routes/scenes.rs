@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::db::scenes as db;
 use crate::error::AppError;
+use crate::events::ApiEvent;
 use crate::routes::AppState;
 
 async fn bulk_create_scenes(
@@ -15,6 +16,14 @@ async fn bulk_create_scenes(
     Json(input): Json<Vec<db::CreateScene>>,
 ) -> Result<Json<Vec<db::Scene>>, AppError> {
     let scenes = db::bulk_create(&state.pool, session_id, &input).await?;
+
+    for scene in &scenes {
+        let _ = state.events.send(ApiEvent::SceneDetected {
+            session_id,
+            scene: serde_json::to_value(scene).unwrap_or_default(),
+        });
+    }
+
     Ok(Json(scenes))
 }
 

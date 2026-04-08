@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::db::sessions as session_db;
 use crate::error::AppError;
+use crate::events::ApiEvent;
 use crate::routes::AppState;
 use crate::storage::{audio, metadata};
 
@@ -33,11 +34,13 @@ async fn upload_chunk(
     let existing = audio::list_chunks(&state.s3_client, &state.s3_bucket, &s3_prefix, &pseudo_id).await?;
     let next_seq = existing.last().map(|c| c.seq + 1).unwrap_or(0);
 
-    // Read the body into bytes
-    let bytes = axum::body::to_bytes(body, 10 * 1024 * 1024) // 10MB max chunk
+    // Read the body into bytes.
+    // Target chunk size is ~2MB of PCM; 3MB limit accommodates HTTP overhead.
+    let bytes = axum::body::to_bytes(body, 3 * 1024 * 1024)
         .await
         .map_err(|e| AppError::BadRequest(format!("read body: {e}")))?;
 
+    let byte_len = bytes.len();
     let key = audio::upload_chunk(
         &state.s3_client,
         &state.s3_bucket,
@@ -46,6 +49,13 @@ async fn upload_chunk(
         next_seq,
         bytes.to_vec(),
     ).await?;
+
+    let _ = state.events.send(ApiEvent::ChunkUploaded {
+        session_id,
+        pseudo_id,
+        seq: next_seq,
+        size: byte_len,
+    });
 
     Ok(Json(UploadResponse { key, seq: next_seq }))
 }

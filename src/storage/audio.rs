@@ -1,4 +1,5 @@
 use aws_sdk_s3::Client;
+use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::primitives::ByteStream;
 use serde::Serialize;
 
@@ -96,7 +97,12 @@ pub async fn download_chunk(
         .key(&key)
         .send()
         .await
-        .map_err(|e| AppError::S3(format!("download failed: {e}")))?;
+        .map_err(|e| {
+            if matches!(e.as_service_error(), Some(GetObjectError::NoSuchKey(_))) {
+                return AppError::NotFound(format!("chunk not found: {key}"));
+            }
+            AppError::S3(format!("download failed: {e}"))
+        })?;
 
     let bytes = result
         .body
