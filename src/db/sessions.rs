@@ -15,6 +15,7 @@ pub struct Session {
     pub campaign_name: Option<String>,
     pub participant_count: Option<i32>,
     pub s3_prefix: Option<String>,
+    pub title: Option<String>,
     pub status: String,
     pub collaborative_editing: bool,
     pub created_at: DateTime<Utc>,
@@ -28,6 +29,7 @@ pub struct CreateSession {
     pub game_system: Option<String>,
     pub campaign_name: Option<String>,
     pub s3_prefix: Option<String>,
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,12 +39,13 @@ pub struct UpdateSession {
     pub participant_count: Option<i32>,
     pub game_system: Option<String>,
     pub campaign_name: Option<String>,
+    pub title: Option<String>,
 }
 
 pub async fn create(pool: &PgPool, input: &CreateSession) -> Result<Session, AppError> {
     let row = sqlx::query_as::<_, Session>(
-        "INSERT INTO sessions (id, guild_id, started_at, game_system, campaign_name, s3_prefix)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        "INSERT INTO sessions (id, guild_id, started_at, game_system, campaign_name, s3_prefix, title)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *"
     )
     .bind(input.id)
@@ -51,6 +54,7 @@ pub async fn create(pool: &PgPool, input: &CreateSession) -> Result<Session, App
     .bind(&input.game_system)
     .bind(&input.campaign_name)
     .bind(&input.s3_prefix)
+    .bind(&input.title)
     .fetch_one(pool)
     .await?;
 
@@ -76,7 +80,8 @@ pub async fn update(pool: &PgPool, id: Uuid, input: &UpdateSession) -> Result<Se
             status = COALESCE($3, status),
             participant_count = COALESCE($4, participant_count),
             game_system = COALESCE($5, game_system),
-            campaign_name = COALESCE($6, campaign_name)
+            campaign_name = COALESCE($6, campaign_name),
+            title = COALESCE($7, title)
          WHERE id = $1
          RETURNING *"
     )
@@ -86,6 +91,7 @@ pub async fn update(pool: &PgPool, id: Uuid, input: &UpdateSession) -> Result<Se
     .bind(input.participant_count)
     .bind(&input.game_system)
     .bind(&input.campaign_name)
+    .bind(&input.title)
     .fetch_optional(pool)
     .await?
     .ok_or_else(|| AppError::NotFound(format!("session {id} not found")))?;

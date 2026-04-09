@@ -10,6 +10,8 @@ pub struct Participant {
     pub id: Uuid,
     pub session_id: Uuid,
     pub user_id: Option<Uuid>,
+    pub display_name: Option<String>,
+    pub character_name: Option<String>,
     pub consent_scope: Option<String>,
     pub consented_at: Option<DateTime<Utc>>,
     pub withdrawn_at: Option<DateTime<Utc>>,
@@ -22,6 +24,16 @@ pub struct Participant {
 pub struct AddParticipant {
     pub user_id: Option<Uuid>,
     pub mid_session_join: Option<bool>,
+    pub display_name: Option<String>,
+    pub character_name: Option<String>,
+}
+
+/// Update display metadata (names) for a participant. Used by the UI
+/// or bot to attach human-readable names after session creation.
+#[derive(Debug, Deserialize)]
+pub struct UpdateMetadata {
+    pub display_name: Option<String>,
+    pub character_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,13 +51,15 @@ pub struct UpdateLicense {
 
 pub async fn add(pool: &PgPool, session_id: Uuid, input: &AddParticipant) -> Result<Participant, AppError> {
     let row = sqlx::query_as::<_, Participant>(
-        "INSERT INTO session_participants (session_id, user_id, mid_session_join)
-         VALUES ($1, $2, COALESCE($3, false))
+        "INSERT INTO session_participants (session_id, user_id, mid_session_join, display_name, character_name)
+         VALUES ($1, $2, COALESCE($3, false), $4, $5)
          RETURNING *"
     )
     .bind(session_id)
     .bind(input.user_id)
     .bind(input.mid_session_join)
+    .bind(&input.display_name)
+    .bind(&input.character_name)
     .fetch_one(pool)
     .await?;
 
@@ -67,11 +81,11 @@ pub async fn add_many(
     }
 
     // Build the VALUES clause with explicit $N placeholders. Postgres has
-    // a hard cap around 65535 bind parameters; with 3 params per row that
-    // caps us at ~21k participants per call, which is plenty given a
+    // a hard cap around 65535 bind parameters; with 5 params per row that
+    // caps us at ~13k participants per call, which is plenty given a
     // real-world upper bound of maybe a few dozen per session.
     let mut query = String::from(
-        "INSERT INTO session_participants (session_id, user_id, mid_session_join) VALUES ",
+        "INSERT INTO session_participants (session_id, user_id, mid_session_join, display_name, character_name) VALUES ",
     );
     let mut first = true;
     for i in 0..inputs.len() {
@@ -79,19 +93,26 @@ pub async fn add_many(
             query.push_str(", ");
         }
         first = false;
-        let base = i * 3;
+        let base = i * 5;
         query.push_str(&format!(
-            "(${}, ${}, COALESCE(${}, false))",
+            "(${}, ${}, COALESCE(${}, false), ${}, ${})",
             base + 1,
             base + 2,
-            base + 3
+            base + 3,
+            base + 4,
+            base + 5
         ));
     }
     query.push_str(" RETURNING *");
 
     let mut q = sqlx::query_as::<_, Participant>(&query);
     for input in inputs {
-        q = q.bind(session_id).bind(input.user_id).bind(input.mid_session_join);
+        q = q
+            .bind(session_id)
+            .bind(input.user_id)
+            .bind(input.mid_session_join)
+            .bind(&input.display_name)
+            .bind(&input.character_name);
     }
 
     Ok(q.fetch_all(pool).await?)
@@ -109,6 +130,8 @@ pub struct ParticipantWithUser {
     pub session_id: Uuid,
     pub user_id: Option<Uuid>,
     pub user_pseudo_id: Option<String>,
+    pub display_name: Option<String>,
+    pub character_name: Option<String>,
     pub consent_scope: Option<String>,
     pub consented_at: Option<DateTime<Utc>>,
     pub withdrawn_at: Option<DateTime<Utc>>,
@@ -124,6 +147,7 @@ pub async fn list(pool: &PgPool, session_id: Uuid) -> Result<Vec<ParticipantWith
     let rows = sqlx::query_as::<_, ParticipantWithUser>(
         "SELECT sp.id, sp.session_id, sp.user_id,
                 u.pseudo_id AS user_pseudo_id,
+                sp.display_name, sp.character_name,
                 sp.consent_scope, sp.consented_at, sp.withdrawn_at,
                 sp.mid_session_join, sp.no_llm_training, sp.no_public_release
          FROM session_participants sp
@@ -135,6 +159,25 @@ pub async fn list(pool: &PgPool, session_id: Uuid) -> Result<Vec<ParticipantWith
     .await?;
 
     Ok(rows)
+}
+
+/// Update a participant's display metadata (display_name, character_name).
+pub async fn update_metadata(pool: &PgPool, id: Uuid, input: &UpdateMetadata) -> Result<Participant, AppError> {
+    let row = sqlx::query_as::<_, Participant>(
+        "UPDATE session_participants SET
+            display_name = COALESCE($2, display_name),
+            character_name = COALESCE($3, character_name)
+         WHERE id = $1
+         RETURNING *"
+    )
+    .bind(id)
+    .bind(&input.display_name)
+    .bind(&input.character_name)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("participant {id} not found")))?;
+
+    Ok(row)
 }
 
 /// Update a participant's consent state and append a matching row to

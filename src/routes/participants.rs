@@ -44,6 +44,15 @@ async fn list_participants(
     Ok(Json(participants))
 }
 
+async fn update_metadata(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<db::UpdateMetadata>,
+) -> Result<Json<db::Participant>, AppError> {
+    let participant = db::update_metadata(&state.pool, id, &input).await?;
+    Ok(Json(participant))
+}
+
 async fn update_consent(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -72,6 +81,7 @@ pub fn routes() -> Router<AppState> {
             "/internal/sessions/{id}/participants/batch",
             post(add_participants_batch),
         )
+        .route("/internal/participants/{id}", patch(update_metadata))
         .route("/internal/participants/{id}/consent", patch(update_consent))
         .route("/internal/participants/{id}/license", patch(update_license))
 }
