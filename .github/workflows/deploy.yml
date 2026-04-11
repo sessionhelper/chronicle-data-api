@@ -36,10 +36,15 @@ jobs:
             ghcr.io/${{ github.repository }}:dev
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
 
-      # Deploy to the OVP compose stack on the production VPS. The stack
-      # lives at /opt/ovp/ alongside postgres and the collector. Pulling
-      # the new data-api image and restarting the systemd unit is enough
-      # — the unit's ExecStart runs `docker compose up -d` which
+      # Deploy to the Chronicle prod compose stack on the production VPS.
+      # The stack lives at /opt/ovp/ alongside postgres and the collector.
+      #
+      # Canonical compose file lives in sessionhelper-hub/infra/prod-compose.yml.
+      # We fetch it fresh on every deploy to avoid drift between the hub's
+      # source of truth and the running VPS state.
+      #
+      # Pulling the new data-api image and restarting the systemd unit is
+      # enough — the unit's ExecStart runs `docker compose up -d` which
       # re-creates any containers whose images changed.
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
@@ -48,6 +53,11 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -euo pipefail
+            curl -fsSL \
+              https://raw.githubusercontent.com/sessionhelper/sessionhelper-hub/main/infra/prod-compose.yml \
+              -o /opt/ovp/docker-compose.yml.new
+            mv /opt/ovp/docker-compose.yml.new /opt/ovp/docker-compose.yml
             cd /opt/ovp
             docker compose pull data-api
             systemctl restart chronicle-data-api
