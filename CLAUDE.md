@@ -1,4 +1,4 @@
-# ovp-data-api
+# chronicle-data-api
 
 > Org-wide conventions (Rust style, git workflow, shared-secret auth, cross-service architecture) live in `/home/alex/sessionhelper-hub/CLAUDE.md`. Read that first for anything cross-cutting.
 

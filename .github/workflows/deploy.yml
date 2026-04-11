@@ -50,5 +50,5 @@ jobs:
           script: |
             cd /opt/ovp
             docker compose pull data-api
-            systemctl restart ovp-data-api
+            systemctl restart chronicle-data-api
             docker image prune -f

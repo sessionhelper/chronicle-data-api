@@ -93,7 +93,7 @@ fn parse_topic(raw: &str) -> Option<Topic> {
 
 /// Known internal service names. Tokens belonging to these services get
 /// reliable mpsc-based delivery instead of broadcast.
-const INTERNAL_SERVICES: &[&str] = &["ovp-worker", "ttrpg-collector", "ttrpg-collector-feeder"];
+const INTERNAL_SERVICES: &[&str] = &["chronicle-worker", "chronicle-bot", "chronicle-feeder"];
 
 /// Validate the bearer token and determine subscriber type.
 ///
