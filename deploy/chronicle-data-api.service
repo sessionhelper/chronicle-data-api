@@ -1,5 +1,5 @@
 [Unit]
-Description=OVP data-api (docker compose)
+Description=Chronicle data-api (docker compose)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target

@@ -19,12 +19,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("ovp_data_api=info,tower_http=info")),
+                .unwrap_or_else(|_| EnvFilter::new("chronicle_data_api=info,tower_http=info")),
         )
         .init();
 
     let config = Config::from_env();
-    info!(bind = %config.bind_addr, "starting ovp-data-api");
+    info!(bind = %config.bind_addr, "starting chronicle-data-api");
 
     // Connect to Postgres and run migrations
     let pool = db::connect(&config.database_url).await?;
