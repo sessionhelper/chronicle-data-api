@@ -47,11 +47,10 @@ Postgres or S3 directly.
 
 ## Auth model
 
-Service auth only. No user auth happens here — that lives in `chronicle-api`
-(currently dormant) and in the `chronicle-portal`'s Next.js BFF (which
-authenticates users via Discord OAuth and calls this service with the
-shared secret). See `sessionhelper-hub/CLAUDE.md` § shared-secret auth for
-the full pattern.
+Service auth only. No user auth happens here — that lives in
+`chronicle-portal`'s Next.js BFF, which authenticates users via Discord
+OAuth and calls this service with the shared secret. See
+`sessionhelper-hub/CLAUDE.md` § shared-secret auth for the full pattern.
 
 The `INTERNAL_SERVICES` allowlist in `src/routes/ws.rs` determines which
 services get reliable mpsc WS delivery vs. broadcast:
