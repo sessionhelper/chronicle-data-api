@@ -44,6 +44,7 @@ pub async fn lookup_by_client_id(
 
 /// Insert a chunk row with a server-assigned monotonic seq per
 /// `(session_id, pseudo_id)`.
+#[allow(clippy::too_many_arguments)]
 pub async fn insert(
     tx: &mut Transaction<'_, Postgres>,
     session_id: Uuid,

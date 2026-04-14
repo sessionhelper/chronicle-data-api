@@ -14,8 +14,45 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Check
-        run: cargo check --release
+        run: cargo check --release --all-targets
       - name: Clippy
-        run: cargo clippy --release -- -D warnings
+        run: cargo clippy --release --all-targets -- -D warnings
       - name: Test
-        run: cargo test --release
+        run: cargo test --release --lib
+
+  migration-lint:
+    # Spec §10: the schema is physically incapable of storing Discord user IDs.
+    # Any migration that introduces a disallowed identifier column MUST fail CI.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Grep-block raw Discord identifier columns
+        run: |
+          set -e
+          shopt -s nullglob
+          # Forbidden tokens inside CREATE/ALTER TABLE bodies. We match column
+          # names specifically — not arbitrary substrings — so references in
+          # comments don't trip the linter.
+          forbidden='(^|[^[:alnum:]_])(discord_id|user_id|author_id|speaker_id|raw_user_id)([[:space:]]+TEXT|[[:space:]]+BIGINT|[[:space:]]+UUID)'
+          fail=0
+          for f in migrations/*.sql; do
+            if grep -EniH "$forbidden" "$f"; then
+              echo "::error file=$f::forbidden identifier column declared"
+              fail=1
+            fi
+          done
+          exit $fail
+      - name: Require pseudo_id CHECK on every pseudo_id column
+        run: |
+          set -e
+          fail=0
+          for f in migrations/*.sql; do
+            # For every `pseudo_id TEXT` declaration, confirm the file also
+            # asserts the 24-hex CHECK somewhere for that column.
+            if grep -Eq 'pseudo_id[[:space:]]+TEXT' "$f" \
+               && ! grep -Eq "pseudo_id ~ '\\^\\[0-9a-f\\]\\{24\\}\\\$'" "$f"; then
+              echo "::error file=$f::pseudo_id column is missing the 24-hex CHECK"
+              fail=1
+            fi
+          done
+          exit $fail

@@ -39,10 +39,12 @@ impl DropOldestQueue {
         self.inner.pop_front()
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    #[cfg(test)]
     pub fn dropped(&self) -> u64 {
         self.dropped
     }

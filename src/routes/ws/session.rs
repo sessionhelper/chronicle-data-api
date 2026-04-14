@@ -15,7 +15,6 @@ use tracing::{debug, info, warn};
 
 use super::filter::{Filter, SubscriptionSet};
 use super::queue::DropOldestQueue;
-use crate::events::Event;
 use crate::routes::AppState;
 
 /// How often we ping the peer.
@@ -55,6 +54,7 @@ enum ServerFrame {
 
 /// Why the connection closed — used in tracing + the WARN on sustained drops.
 #[derive(Debug)]
+#[allow(dead_code, clippy::enum_variant_names)]
 enum Closed {
     PeerClosed,
     PeerError(String),

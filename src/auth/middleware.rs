@@ -64,6 +64,7 @@ pub async fn require_service_auth(
     Ok(next.run(request).await)
 }
 
+#[allow(clippy::result_large_err)]
 fn extract_bearer(request: &Request) -> Result<&str, Response> {
     let header = request
         .headers()

@@ -156,16 +156,11 @@ async fn guild_id_for_session(
     pool: &sqlx::PgPool,
     session_id: Uuid,
 ) -> Result<i64, AppError> {
-    #[derive(sqlx::FromRow)]
-    struct R {
-        guild_id: i64,
-    }
-    let r = sqlx::query_as::<_, R>("SELECT guild_id FROM sessions WHERE id = $1")
+    sqlx::query_scalar::<_, i64>("SELECT guild_id FROM sessions WHERE id = $1")
         .bind(session_id)
         .fetch_optional(pool)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("session {session_id} not found")))?;
-    Ok(r.guild_id)
+        .ok_or_else(|| AppError::NotFound(format!("session {session_id} not found")))
 }
 
 pub fn routes() -> Router<AppState> {
