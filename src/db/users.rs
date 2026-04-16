@@ -40,6 +40,18 @@ pub async fn get(pool: &PgPool, pseudo_id: &PseudoId) -> Result<User, AppError> 
         .ok_or_else(|| AppError::NotFound(format!("user {pseudo_id} not found")))
 }
 
+/// List every user, newest first. Used by the admin surface.
+pub async fn list_all(pool: &PgPool) -> Result<Vec<User>, AppError> {
+    let rows = sqlx::query_as::<_, User>(
+        "SELECT pseudo_id, is_admin, data_wiped_at, created_at
+         FROM users
+         ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn set_admin(
     tx: &mut Transaction<'_, Postgres>,
     pseudo_id: &PseudoId,

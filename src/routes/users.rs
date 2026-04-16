@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::auth::middleware::ServiceSession;
@@ -87,10 +88,55 @@ async fn list_display(
     Ok(Json(display_names::list(&state.pool, &pid).await?))
 }
 
+async fn list_admin_users(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<users::User>>, AppError> {
+    Ok(Json(users::list_all(&state.pool).await?))
+}
+
+#[derive(Debug, Deserialize)]
+struct PatchUserRequest {
+    is_admin: bool,
+}
+
+async fn patch_user(
+    State(state): State<AppState>,
+    Extension(svc): Extension<ServiceSession>,
+    Path(pid): Path<String>,
+    Json(req): Json<PatchUserRequest>,
+) -> Result<Json<users::User>, AppError> {
+    let pid = PseudoId::new(pid)?;
+    let mut tx = state.pool.begin().await?;
+    let user = users::set_admin(&mut tx, &pid, req.is_admin).await?;
+    audit_log::append_tx(
+        &mut tx,
+        &audit_log::Entry {
+            actor_service: &svc.service_name,
+            actor_pseudo: Some(pid.as_str()),
+            session_id: None,
+            resource_type: "user",
+            resource_id: pid.as_str().to_string(),
+            action: if req.is_admin {
+                "admin_granted"
+            } else {
+                "admin_revoked"
+            },
+            detail: Some(json!({ "is_admin": req.is_admin })),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Json(user))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/internal/users", post(upsert_user))
-        .route("/internal/users/{pseudo_id}", get(fetch_user))
+        .route("/internal/admin/users", get(list_admin_users))
+        .route(
+            "/internal/users/{pseudo_id}",
+            get(fetch_user).patch(patch_user),
+        )
         .route(
             "/internal/users/{pseudo_id}/display_names",
             post(post_display).get(list_display),
