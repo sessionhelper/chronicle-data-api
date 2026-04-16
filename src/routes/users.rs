@@ -90,8 +90,25 @@ async fn list_display(
 
 async fn list_admin_users(
     State(state): State<AppState>,
-) -> Result<Json<Vec<users::User>>, AppError> {
-    Ok(Json(users::list_all(&state.pool).await?))
+) -> Result<Json<Vec<users::AdminUserListItem>>, AppError> {
+    Ok(Json(users::list_all_with_details(&state.pool).await?))
+}
+
+async fn fetch_admin_user_detail(
+    State(state): State<AppState>,
+    Path(pid): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let pid = PseudoId::new(pid)?;
+    let user = users::get(&state.pool, &pid).await?;
+    let aliases = display_names::list(&state.pool, &pid).await?;
+    let latest_display_name = aliases.first().map(|d| d.display_name.clone());
+    let sessions = users::list_sessions_for_user(&state.pool, &pid).await?;
+    Ok(Json(json!({
+        "user": user,
+        "latest_display_name": latest_display_name,
+        "display_names": aliases,
+        "sessions": sessions,
+    })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,6 +150,10 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/internal/users", post(upsert_user))
         .route("/internal/admin/users", get(list_admin_users))
+        .route(
+            "/internal/admin/users/{pseudo_id}",
+            get(fetch_admin_user_detail),
+        )
         .route(
             "/internal/users/{pseudo_id}",
             get(fetch_user).patch(patch_user),
