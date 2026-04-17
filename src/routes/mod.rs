@@ -2,6 +2,7 @@ pub mod admin;
 pub mod audit;
 pub mod auth;
 pub mod chunks;
+pub mod consent;
 pub mod health;
 pub mod metadata;
 pub mod metrics;
@@ -46,6 +47,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(admin::routes())
         .merge(health::routes())
         .merge(metrics::routes())
+        .merge(consent::public_routes())
         .with_state(state.clone());
 
     let auth_state = AuthState {
@@ -61,6 +63,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(uniform_crud::routes())
         .merge(mute::routes())
         .merge(audit::routes())
+        .merge(consent::internal_routes())
         .route_layer(middleware::from_fn_with_state(
             auth_state,
             require_service_auth,

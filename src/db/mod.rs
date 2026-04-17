@@ -1,5 +1,6 @@
 pub mod audit_log;
 pub mod chunks;
+pub mod consent_tokens;
 pub mod display_names;
 pub mod metadata;
 pub mod mute_ranges;
